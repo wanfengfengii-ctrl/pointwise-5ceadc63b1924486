@@ -3,6 +3,8 @@ from collections.abc import Iterable
 from archive.window_store import CaptureReceipt, WindowStore
 from camera.sessions import SessionRegistry
 from inspection.admission import prepare_dense_window
+from inspection.event_capture import run_event_capture
+from source.events import CaptureConfig, CaptureEvent
 from source.packet import SourcePacket, decode_packet
 from source.tape import iter_packet_records
 
@@ -48,11 +50,20 @@ class ReplaySource:
 
 
 class PacketCapture:
-    def __init__(self, sessions: SessionRegistry, windows: WindowStore) -> None:
+    def __init__(
+        self,
+        sessions: SessionRegistry,
+        windows: WindowStore,
+        capture_config: CaptureConfig | None = None,
+    ) -> None:
         self._sessions = sessions
         self._windows = windows
+        self._capture_config = capture_config
 
     def capture_packet(self, session: str, packet: SourcePacket) -> CaptureReceipt:
         binding = self._sessions.get_session(session)
         prepared = prepare_dense_window(binding, packet)
         return self._windows.publish_window(prepared)
+
+    def run(self, session: str, events: Iterable[CaptureEvent]) -> None:
+        run_event_capture(self._sessions, self._windows, self._capture_config, session, events)

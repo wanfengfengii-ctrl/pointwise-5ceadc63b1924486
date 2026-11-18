@@ -9,6 +9,7 @@ from archive.profile_store import ProfileStore
 from archive.readback import ArchiveVerificationError, ArchivedWindow, WindowReader
 from archive.schema import encode_natural
 from archive.session_catalog import find_capture_by_packet, find_session_binding
+from archive.trigger_store import TriggerWindowRecord, insert_trigger_window, read_trigger_window
 from camera.sessions import SessionBindingError
 from inspection.admission import PreparedWindow
 from inspection.grading import WindowGrade
@@ -105,6 +106,16 @@ class WindowStore:
             if capture_id is None:
                 return self._insert(window)
             return self._retry(window, capture_id)
+
+    def publish_trigger_window(self, record: TriggerWindowRecord) -> None:
+        with self._transaction('BEGIN IMMEDIATE'):
+            insert_trigger_window(self._connection, record)
+
+    def window(self, session: str, trigger_slot: int) -> dict | None:
+        if type(trigger_slot) is not int or trigger_slot < 0:
+            return None
+        with self._transaction('BEGIN'):
+            return read_trigger_window(self._connection, session, trigger_slot)
 
     @contextmanager
     def read_snapshot(self) -> Iterator[WindowReader]:

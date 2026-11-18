@@ -1,9 +1,9 @@
 import sqlite3
 from os import PathLike
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
-_SCHEMA = (
+_SCHEMA_V1 = (
     '''CREATE TABLE profiles (
            camera TEXT NOT NULL,
            revision TEXT NOT NULL,
@@ -53,6 +53,34 @@ _SCHEMA = (
     'CREATE INDEX windows_session_capture ON windows (session, capture_id)',
 )
 
+_SCHEMA_V2 = (
+    '''CREATE TABLE trigger_windows (
+           session TEXT NOT NULL REFERENCES sessions (session),
+           trigger_slot TEXT NOT NULL,
+           first_slot TEXT NOT NULL,
+           last_slot TEXT NOT NULL,
+           frame_bytes TEXT NOT NULL,
+           gray_sum TEXT NOT NULL,
+           pixel_count TEXT NOT NULL,
+           slots_digest TEXT NOT NULL,
+           window_digest TEXT NOT NULL,
+           PRIMARY KEY (session, trigger_slot)
+       )''',
+    '''CREATE TABLE trigger_slots (
+           session TEXT NOT NULL,
+           trigger_slot TEXT NOT NULL,
+           ordinal INTEGER NOT NULL CHECK (ordinal >= 0),
+           slot TEXT NOT NULL,
+           payload BLOB,
+           PRIMARY KEY (session, trigger_slot, ordinal),
+           UNIQUE (session, trigger_slot, slot),
+           FOREIGN KEY (session, trigger_slot)
+               REFERENCES trigger_windows (session, trigger_slot)
+       )''',
+)
+
+_MIGRATIONS = (_SCHEMA_V1, _SCHEMA_V2)
+
 
 def encode_natural(value: int) -> str:
     if type(value) is not int or value < 0:
@@ -77,17 +105,17 @@ def initialize_archive(connection: sqlite3.Connection) -> None:
     version = _schema_version(connection)
     if version == SCHEMA_VERSION:
         return
-    if version != 0:
+    if not 0 <= version < SCHEMA_VERSION:
         raise sqlite3.DatabaseError(f'unsupported archive schema version {version}')
     connection.execute('BEGIN IMMEDIATE')
     try:
         version = _schema_version(connection)
-        if version == 0:
-            for statement in _SCHEMA:
-                connection.execute(statement)
-            connection.execute(f'PRAGMA user_version = {SCHEMA_VERSION}')
-        elif version != SCHEMA_VERSION:
+        if not 0 <= version < SCHEMA_VERSION:
             raise sqlite3.DatabaseError(f'unsupported archive schema version {version}')
+        for migration in _MIGRATIONS[version:]:
+            for statement in migration:
+                connection.execute(statement)
+        connection.execute(f'PRAGMA user_version = {SCHEMA_VERSION}')
         connection.commit()
     except BaseException:
         connection.rollback()

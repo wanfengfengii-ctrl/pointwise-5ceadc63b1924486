@@ -43,3 +43,24 @@ def window_header_digest(
         profile.threshold, encode_natural(totals.gray_sum), encode_natural(totals.pixel_count),
         grade.value, frames_digest,
     ))).hexdigest()
+
+
+def trigger_slots_digest(slots: Iterable[tuple[int, bytes | None]]) -> str:
+    digest = hashlib.sha256(b'trigger-slots-v1\n')
+    for ordinal, (slot, payload) in enumerate(slots):
+        digest.update(_encode((
+            ordinal, encode_natural(slot), None if payload is None else payload.hex(),
+        )))
+        digest.update(b'\n')
+    return digest.hexdigest()
+
+
+def trigger_window_digest(
+    session: str, trigger_slot: int, first_slot: int, last_slot: int, frame_bytes: int,
+    gray_sum: int, pixel_count: int, slots_digest: str,
+) -> str:
+    return hashlib.sha256(_encode((
+        'trigger-window-v1', session, encode_natural(trigger_slot),
+        encode_natural(first_slot), encode_natural(last_slot), encode_natural(frame_bytes),
+        encode_natural(gray_sum), encode_natural(pixel_count), slots_digest,
+    ))).hexdigest()
